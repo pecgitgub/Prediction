@@ -1,0 +1,168 @@
+---
+title: 'Machine Learning: Predict  exercise pattern'
+author: "Satya"
+date: "November 10, 2016"
+output: html_document
+---
+
+# Machine Learning Project: Excercise Pattern prediction
+### 1. Executive Summary
+
+Excercise data collected from various sources such as Jawbone up, Nike and Fitbit and the collected data is about personal activity from all these devices in an inexpensive manner. Predicgtion analysis is related to improve health and find patterns in their behavior.
+
+In this project, goal is to use to pridict the manner in which 6 participants performed excercised in the data. This is the "classe" variable in the training data set. The machine learning applied 20 test cases availble in test data for prediction
+
+##2 Background
+
+Data was collected using various sources from personal activities. Different types of devices are part of quantified movements and  data used to predict to improve the health by trying to find patterns in bevaiour. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. 
+
+##3. Data Loading and Exploratory Analysis
+
+###Data source:  
+### Training Data
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+###Test Data
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+### Techinical Analysis
+```{r exr0, echo=TRUE}
+
+ 
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(corrplot)
+library(gbm)
+set.seed(301)
+ 
+```
+
+#c. Data Loading and Cleaning
+Dataset loaded from the URL provided from the above. The training dataset partitioned into 2 to create a training set with 70% of the dataset and for test dataset with 30% dataset for validations. 
+
+
+```{r exr1, echo=TRUE}
+TrainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+TestUrl  <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+TrainFile<-"pml-traininig.csv"
+TestFile<-"pml-testing.csv"
+
+# download the datasets
+if(!file.exists(TrainFile))
+{
+    download.file(TrainUrl,destfile = TrainFile)
+}
+training <- read.csv(TrainFile)
+if(!file.exists(TestFile))
+{
+    download.file(TestUrl,destfile = TestFile)
+}
+testing  <- read.csv(TestFile)
+
+# create a partition using caret with the training dataset on 70,30 ratio
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+
+TrainSet <- training[inTrain, ]
+
+TestSet  <- training[-inTrain, ]
+dim(TrainSet)
+dim(TestSet)
+```
+
+Training set has 160 variable. One of the dependent variable as used for this stufy of this project.  Dataset requires to clean NA values. The Near Zero variance (NZV) and the ID variables as well.
+
+```{r exr2, echo=TRUE}
+NZV <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZV]
+TestSet  <- TestSet[, -NZV]
+dim(TestSet)
+dim(TrainSet)
+
+```
+Remove variables that are mostly NA
+```{r exr21, echo=TRUE}
+
+AllNA    <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.95
+TrainSet <- TrainSet[, AllNA==FALSE]
+TestSet  <- TestSet[, AllNA==FALSE]
+dim(TestSet)
+dim(TrainSet)
+TrainSet <- TrainSet[, -(1:5)]
+TestSet  <- TestSet[, -(1:5)]
+dim(TrainSet)
+```
+After cleaning, we can see that the number of vairables for the analysis are now only 53.
+
+#d.Coorection Analysis
+A correlation among variables is analysed before proceeding to the modeling procedures.
+
+```{r exr3, echo=TRUE}
+corMatrix <- cor(TrainSet[, -54])
+corrplot(corMatrix, order = "FPC", method = "color", type = "lower", 
+         tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+
+```
+More correlated variables showed in dark colors in the graph. To make an even more compact analysis, a PCA (Principal Components Analysis) could be performed as pre-processing step to the datasets. Nevertheless, as the correlations are quite few, this step will not be applied for this assignment.
+
+#4. Prediction Model Building
+Three popular methods applied to model the regressions using the Train dataset. The best one (with higher accuracy when applied to the Test dataset) will be used for the quiz predictions. The methods are: Random Forests, Decision Tree and Generalized Boosted Model, as described below. A Confusion Matrix is plotted at the end of each analysis to better visualize the accuracy of the models.
+
+##a. Random Forests
+
+
+```{r exr4, echo=TRUE}
+set.seed(301)
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modFitRandForest <- train(classe ~ ., data=TrainSet, method="rf",
+                          trControl=controlRF)
+modFitRandForest$finalModel
+predictRandForest <- predict(modFitRandForest, newdata=TestSet)
+confMatRandForest <- confusionMatrix(predictRandForest, TestSet$classe)
+confMatRandForest
+plot(confMatRandForest$table, col = confMatRandForest$byClass, 
+     main = paste("Random Forest - Accuracy =",
+                  round(confMatRandForest$overall['Accuracy'], 4)))
+
+```
+#b. Decision Tree
+```{r exr5, echo=TRUE}
+set.seed(301)
+modFitDecTree <- rpart(classe ~ ., data=TrainSet, method="class")
+fancyRpartPlot(modFitDecTree)
+predictDecTree <- predict(modFitDecTree, newdata=TestSet, type="class")
+confMatDecTree <- confusionMatrix(predictDecTree, TestSet$classe)
+confMatDecTree
+plot(confMatDecTree$table, col = confMatDecTree$byClass, 
+     main = paste("Decision Tree - Accuracy =",
+                  round(confMatDecTree$overall['Accuracy'], 4)))
+```
+#c. Generalized Boosted Model (GBM)
+
+```{r exr6, echo=TRUE}
+set.seed(301)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modFitGBM  <- train(classe ~ ., data=TrainSet, method = "gbm",
+                    trControl = controlGBM, verbose = FALSE)
+modFitGBM$finalModel
+predictGBM <- predict(modFitGBM, newdata=TestSet)
+confMatGBM <- confusionMatrix(predictGBM, TestSet$classe)
+confMatGBM
+plot(confMatGBM$table, col = confMatGBM$byClass, 
+     main = paste("GBM - Accuracy =", round(confMatGBM$overall['Accuracy'], 4)))
+```
+
+#5. Applying the selected Model to the Test Data
+The accuracy of the 3 regression modeling methods above are:
+
+Random Forest : 0.9968 Decision Tree : 0.8291 GBM : 0.9884 In that case, the Random Forest model will be applied to predict the 20 quiz results (testing dataset) as shown below.
+
+```{r exr7, echo=TRUE}
+predictTEST <- predict(modFitRandForest, newdata=testing)
+predictTEST
+
+```
